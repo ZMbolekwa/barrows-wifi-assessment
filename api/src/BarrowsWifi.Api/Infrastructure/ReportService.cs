@@ -30,15 +30,19 @@ public class ReportService
         if (campaign is null) return null;
 
         // Events at the campaign's outlets during the flight
-        var events =
-            from e in _db.ConnectionEvents
-            join co in _db.CampaignOutlets on e.OutletId equals co.OutletId
-            where co.CampaignId == campaignId
-                  && e.OccurredAt >= campaign.StartsAt
-                  && e.OccurredAt < campaign.EndsAt
-            select e;
-
-        var impressions = await events.CountAsync(e => e.EventType == EventTypes.AdComplete, ct);
+        
+var events = _db.ConnectionEvents.Where(e =>
+    e.CampaignId == campaignId &&
+    _db.CampaignOutlets.Any(co =>
+        co.CampaignId == campaignId &&
+        co.OutletId == e.OutletId) &&
+    e.OccurredAt >= campaign.StartsAt &&
+    e.OccurredAt < campaign.EndsAt);
+        var impressions = await events
+          .Where(e => e.EventType == EventTypes.AdComplete)
+          .Select(e => e.EventId)
+           .Distinct()
+           .CountAsync(ct);
         var uniqueUsers = await events
             .Where(e => e.EventType == EventTypes.AdComplete)
             .Select(e => e.DeviceHash)
