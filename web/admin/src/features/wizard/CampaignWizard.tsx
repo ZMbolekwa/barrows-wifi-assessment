@@ -16,6 +16,16 @@ import { StepOutlets } from './StepOutlets'
 import { StepReview } from './StepReview'
 
 const STEPS = ['Details', 'Schedule & budget', 'Outlets', 'Review']
+const REQUEST_KEY_STORAGE_KEY = 'bw_campaign_wizard_request_key'
+
+function getRequestKey() {
+  const existing = sessionStorage.getItem(REQUEST_KEY_STORAGE_KEY)
+  if (existing) return existing
+
+  const key = crypto.randomUUID()
+  sessionStorage.setItem(REQUEST_KEY_STORAGE_KEY, key)
+  return key
+}
 
 export function CampaignWizard() {
   const navigate = useNavigate()
@@ -24,9 +34,10 @@ export function CampaignWizard() {
   const [errors, setErrors] = useState<DraftErrors>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const submissionLock = useRef(false)
 
-  // Reuse this key if the request is retried after an uncertain response.
-  const requestKey = useRef(crypto.randomUUID())
+  // Keep the key across retries and page reloads after an uncertain response.
+  const requestKey = useRef<string | null>(null)
 
   function updateDraft(values: Partial<CampaignDraft>) {
     setDraft(current => ({ ...current, ...values }))
@@ -47,7 +58,7 @@ export function CampaignWizard() {
   }
 
   async function submit() {
-    if (submitting) return
+    if (submissionLock.current) return
 
     const allErrors = [0, 1, 2].reduce(
       (combined, currentStep) => ({
@@ -66,29 +77,34 @@ export function CampaignWizard() {
       return
     }
 
+    submissionLock.current = true
     setSubmitting(true)
     setSubmitError(null)
 
     try {
+      requestKey.current ??= getRequestKey()
       const created = await api<{ id: number }>('/api/campaigns', {
         method: 'POST',
         headers: { 'Idempotency-Key': requestKey.current },
         body: JSON.stringify(toRequest(draft)),
       })
 
+      sessionStorage.removeItem(REQUEST_KEY_STORAGE_KEY)
       navigate(`/campaigns/${created.id}`)
     } catch {
       setSubmitError('Campaign could not be created. Please try again.')
+      submissionLock.current = false
       setSubmitting(false)
     }
   }
 
   return (
     <div className="space-y-4">
-      <ol className="grid grid-cols-4 gap-2 text-xs sm:text-sm">
+      <ol className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 sm:text-sm">
         {STEPS.map((label, index) => (
           <li
             key={label}
+            aria-current={index === step ? 'step' : undefined}
             className={`rounded-md px-2 py-2 text-center ${
               index === step
                 ? 'bg-brand-50 font-semibold text-brand-700'
@@ -141,10 +157,10 @@ export function CampaignWizard() {
             <StepReview draft={draft} />
 
             <div className="mt-6 flex justify-between gap-3">
-              <Button variant="secondary" onClick={back} disabled={submitting}>
+              <Button type="button" variant="secondary" onClick={back} disabled={submitting}>
                 Back
               </Button>
-              <Button onClick={submit} disabled={submitting}>
+              <Button type="button" onClick={submit} disabled={submitting}>
                 {submitting ? 'Creating...' : 'Create campaign'}
               </Button>
             </div>

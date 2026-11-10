@@ -2,6 +2,7 @@ using System.Security.Claims;
 using BarrowsWifi.Api.Data;
 using BarrowsWifi.Api.Domain;
 using BarrowsWifi.Api.Infrastructure;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace BarrowsWifi.Api.Endpoints;
@@ -33,6 +34,21 @@ public record CreateCampaignRequest(
 
 public static class CampaignEndpoints
 {
+    public static bool MatchesRequest(
+        Campaign campaign,
+        CreateCampaignRequest request,
+        int organisationId,
+        IReadOnlyCollection<int> outletIds)
+    {
+        var requestedName = request.Name?.Trim();
+        return campaign.OrganisationId == organisationId &&
+            campaign.Name == requestedName &&
+            campaign.StartsAt == request.StartsAt &&
+            campaign.EndsAt == request.EndsAt &&
+            campaign.BudgetZar == request.BudgetZar &&
+            campaign.Outlets.Select(o => o.OutletId).Order().SequenceEqual(outletIds.Order());
+    }
+
     public static void MapCampaignEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/campaigns")
@@ -83,16 +99,9 @@ public static class CampaignEndpoints
             CancellationToken ct) =>
         {
             var user = CurrentUser.From(principal);
-            var requestKey = httpRequest.Headers["Idempotency-Key"].FirstOrDefault();
-
-            if (!string.IsNullOrWhiteSpace(requestKey))
-            {
-                var existing = await db.Campaigns
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.CreateRequestKey == requestKey, ct);
-                if (existing is not null)
-                    return Results.Ok(new { id = existing.Id });
-            }
+            var requestKey = httpRequest.Headers["Idempotency-Key"].FirstOrDefault()?.Trim();
+            if (string.IsNullOrWhiteSpace(requestKey))
+                return Results.BadRequest();
 
             var name = request.Name?.Trim();
             var organisationId = user.IsPlatformAdmin
@@ -102,8 +111,17 @@ public static class CampaignEndpoints
 
             if (string.IsNullOrWhiteSpace(name) || name.Length > 200 ||
                 request.StartsAt >= request.EndsAt || request.BudgetZar <= 0 ||
-                outletIds.Length == 0 || requestKey?.Length > 100)
+                outletIds.Length == 0 || requestKey.Length > 100)
                 return Results.BadRequest();
+
+            var existing = await db.Campaigns
+                .AsNoTracking()
+                .Include(c => c.Outlets)
+                .FirstOrDefaultAsync(c => c.CreateRequestKey == requestKey, ct);
+            if (existing is not null)
+                return MatchesRequest(existing, request, organisationId, outletIds)
+                    ? Results.Ok(new { id = existing.Id })
+                    : Results.Conflict();
 
             var organisationExists = await db.Organisations
                 .AnyAsync(o => o.Id == organisationId, ct);
@@ -124,14 +142,32 @@ public static class CampaignEndpoints
                 StartsAt = request.StartsAt,
                 EndsAt = request.EndsAt,
                 BudgetZar = request.BudgetZar,
-                CreateRequestKey = string.IsNullOrWhiteSpace(requestKey) ? null : requestKey,
+                CreateRequestKey = requestKey,
                 CreatedAt = now,
                 UpdatedAt = now,
                 Outlets = outletIds.Select(id => new CampaignOutlet { OutletId = id }).ToList()
             };
 
             db.Campaigns.Add(campaign);
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex)
+                when (ex.GetBaseException() is SqlException sql &&
+                      (sql.Number == 2601 || sql.Number == 2627))
+            {
+                var existingAfterRace = await db.Campaigns
+                    .AsNoTracking()
+                    .Include(c => c.Outlets)
+                    .FirstOrDefaultAsync(c => c.CreateRequestKey == requestKey, ct);
+
+                if (existingAfterRace is null) throw;
+
+                return MatchesRequest(existingAfterRace, request, organisationId, outletIds)
+                    ? Results.Ok(new { id = existingAfterRace.Id })
+                    : Results.Conflict();
+            }
 
             return Results.Created($"/api/campaigns/{campaign.Id}", new { id = campaign.Id });
         })

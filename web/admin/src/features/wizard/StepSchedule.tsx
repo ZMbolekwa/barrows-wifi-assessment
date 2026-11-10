@@ -28,9 +28,10 @@ export function StepSchedule({
             value={draft.startDate}
             onChange={e => onChange({ startDate: e.target.value })}
             aria-invalid={!!errors.startDate}
+            aria-describedby={errors.startDate ? 'start-error' : undefined}
           />
           {errors.startDate && (
-            <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
+            <p id="start-error" className="mt-1 text-sm text-red-600">{errors.startDate}</p>
           )}
         </div>
 
@@ -43,9 +44,10 @@ export function StepSchedule({
             min={draft.startDate || undefined}
             onChange={e => onChange({ endDate: e.target.value })}
             aria-invalid={!!errors.endDate}
+            aria-describedby={errors.endDate ? 'end-error' : undefined}
           />
           {errors.endDate && (
-            <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
+            <p id="end-error" className="mt-1 text-sm text-red-600">{errors.endDate}</p>
           )}
         </div>
       </div>
@@ -59,15 +61,16 @@ export function StepSchedule({
           onChange={e => onChange({ budget: e.target.value })}
           placeholder="e.g. 150000"
           aria-invalid={!!errors.budget}
+          aria-describedby={errors.budget ? 'budget-error' : undefined}
         />
         {errors.budget && (
-          <p className="mt-1 text-sm text-red-600">{errors.budget}</p>
+          <p id="budget-error" className="mt-1 text-sm text-red-600">{errors.budget}</p>
         )}
       </div>
 
       <div className="flex justify-between gap-3">
-        <Button variant="secondary" onClick={onBack}>Back</Button>
-        <Button onClick={onNext}>Next</Button>
+        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
+        <Button type="button" onClick={onNext}>Next</Button>
       </div>
     </div>
   )

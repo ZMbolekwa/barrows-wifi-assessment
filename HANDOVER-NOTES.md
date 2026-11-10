@@ -29,4 +29,14 @@ Tickets 1 and 2 have been addressed; Tickets 3–6 remain as described in `HANDO
 - The database unique indexes protect local summary and email records. Exactly-once external delivery requires the production provider to honor the stable idempotency key; finite in-memory retries cannot guarantee eventual delivery during prolonged outages.
 - The API and SQL Server started for verification were stopped afterward. The local Compose database volume is retained.
 
-Tickets 1–3 have been addressed; Tickets 4–6 remain as described in `HANDOVER.md`.
+## Ticket 4 — KES-251 campaign wizard
+
+- Draft values live in the parent wizard state and survive step changes; validation errors are shown and associated with fields on the step that owns them.
+- Campaign creation uses an in-flight submission lock and keeps its idempotency key in `sessionStorage` until the API confirms success. The API requires the key, returns the existing campaign for an identical retry, returns conflict for key reuse with different campaign data, and resolves concurrent duplicate inserts through the unique index.
+- Outlet search now uses the existing paginated API endpoint, which filters active outlets by name, STP number, or province. The picker debounces input, aborts stale requests, retains selections across pages, and supports retrying a failed page load.
+- Date conversion tests confirm SAST midnight becomes UTC previous-day 22:00 and `endsAt` is exclusive midnight after the selected last day.
+- Verification: admin tests passed (5 tests); admin TypeScript/production build passed; API tests passed (19 tests); API solution build passed with no warnings or errors.
+- Browser smoke test at 360x800 completed with simulated 1.5-second API delays. The full create flow passed, produced the expected SAST-to-UTC dates, and `document.documentElement.scrollWidth` equaled the 360px viewport.
+- Remaining verification: simulated delay is not the DevTools Slow 3G profile or a real handset. Confirm the full flow on target devices and browsers under actual Slow 3G.
+
+Tickets 1–4 have been addressed; Tickets 5–6 remain as described in `HANDOVER.md`.

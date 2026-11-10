@@ -86,15 +86,18 @@ The production email provider must also support idempotency keys to prevent dupl
 
 Ticket 4 – KES-251: Campaign wizard improvements
 
-Status: In progress; implementation and endpoint integration need verification.
+Status: Implemented and verified with frontend/backend tests and a 360px browser smoke test under delayed API responses.
 
 Requirements:
 
 * Retain entered values when navigating between wizard steps.
-* Display validation errors on the relevant step.
-* Prevent duplicate campaign creation.
-* Improve outlet selection using a paginated search endpoint.
-* Test the wizard at 360px screen width and under Slow 3G conditions.
+* Keep field validation errors on their relevant step and announce them accessibly.
+* Prevent duplicate submissions with a session-persisted idempotency key, an in-flight lock, and server-side request matching including concurrent insert races.
+* Search active outlets by name, STP number, or province through a paginated API query.
+* Debounce outlet search and cancel stale requests; verified at 360px with 1.5-second API response delays and no horizontal overflow.
+* Convert selected SAST calendar dates to UTC with an inclusive start and exclusive midnight after the selected final day.
+* `cd web/admin && npm test`: 5 passed; `cd web/admin && npm run build`: succeeded.
+* `dotnet test api/BarrowsWifi.sln`: 19 passed; `dotnet build api/BarrowsWifi.sln`: succeeded with 0 warnings and 0 errors.
 
 Frontend area:
 
@@ -104,9 +107,7 @@ Backend area:
 
 * api/src/BarrowsWifi.Api/Endpoints/
 
-Important outstanding item:
-
-Verify the actual campaign creation endpoint before applying server-side duplicate-submission protection. The file currently displayed as CampaignEndpoints.cs appeared to contain CampaignEndedConsumer code, so the filename and class contents need to be reconciled.
+The browser smoke test used simulated 1.5-second API delays rather than the DevTools Slow 3G preset. Confirm the full flow on the target mobile device/browser before release.
 
 Ticket 5 – Captive portal compatibility and performance
 
@@ -149,7 +150,7 @@ Outstanding verification includes:
 * Verifying report access across different client organisations through the running API and SQL Server.
 * Confirming the Ticket 2 breakdown against production event-store data.
 * Confirming the production mail provider supports the email idempotency contract.
-* Testing campaign wizard behaviour and responsiveness.
+* Confirming the campaign wizard on target mobile devices and browsers under real Slow 3G.
 * Testing the captive portal on older devices and slower connections.
 * Validating distributor CSV reconciliation.
 

@@ -20,14 +20,22 @@ export function StepOutlets({
 }: Props) {
   const [outlets, setOutlets] = useState<Outlet[]>([])
   const [filter, setFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [retry, setRetry] = useState(0)
   const pageSize = 25
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(filter.trim()), 250)
+    return () => window.clearTimeout(timer)
+  }, [filter])
+
+  useEffect(() => {
     let active = true
+    const controller = new AbortController()
 
     async function loadOutlets() {
       setLoading(true)
@@ -35,7 +43,8 @@ export function StepOutlets({
 
       try {
         const result = await api<Paged<Outlet>>(
-          `/api/outlets?search=${encodeURIComponent(filter)}&page=${page}&pageSize=${pageSize}`,
+          `/api/outlets?search=${encodeURIComponent(search)}&page=${page}&pageSize=${pageSize}`,
+          { signal: controller.signal },
         )
 
         if (active) {
@@ -43,7 +52,9 @@ export function StepOutlets({
           setTotal(result.total)
         }
       } catch {
-        if (active) setLoadError('Could not load outlets. Please try again.')
+        if (active && !controller.signal.aborted) {
+          setLoadError('Could not load outlets. Please try again.')
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -53,8 +64,9 @@ export function StepOutlets({
 
     return () => {
       active = false
+      controller.abort()
     }
-  }, [filter, page])
+  }, [search, page, retry])
 
   function toggle(id: number) {
     onChange(
@@ -77,6 +89,7 @@ export function StepOutlets({
         <Input
           placeholder="Search outlet, STP number or province"
           value={filter}
+          aria-label="Search outlet, STP number or province"
           onChange={e => {
             setFilter(e.target.value)
             setPage(1)
@@ -98,10 +111,17 @@ export function StepOutlets({
         </Button>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {loadError && <p role="alert" className="text-sm text-red-600">{loadError}</p>}
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {loadError && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-red-600">
+          <span>{loadError}</span>
+          <Button type="button" variant="ghost" onClick={() => setRetry(value => value + 1)}>
+            Retry
+          </Button>
+        </div>
+      )}
 
-      <div className="overflow-hidden rounded-md border border-slate-200">
+      <div className="overflow-hidden rounded-md border border-slate-200" aria-live="polite">
         {loading ? (
           <p className="p-4 text-sm text-slate-500">Loading outlets...</p>
         ) : outlets.length === 0 ? (
@@ -136,6 +156,7 @@ export function StepOutlets({
         <Button
           type="button"
           variant="secondary"
+          aria-label="Previous outlet page"
           onClick={() => setPage(current => Math.max(1, current - 1))}
           disabled={page <= 1 || loading}
         >
@@ -147,6 +168,7 @@ export function StepOutlets({
         <Button
           type="button"
           variant="secondary"
+          aria-label="Next outlet page"
           onClick={() => setPage(current => Math.min(totalPages, current + 1))}
           disabled={page >= totalPages || loading}
         >
@@ -155,8 +177,8 @@ export function StepOutlets({
       </div>
 
       <div className="flex justify-between gap-3">
-        <Button variant="secondary" onClick={onBack}>Back</Button>
-        <Button onClick={onNext}>Next</Button>
+        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
+        <Button type="button" onClick={onNext}>Next</Button>
       </div>
     </div>
   )

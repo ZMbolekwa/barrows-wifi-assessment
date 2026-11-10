@@ -1,5 +1,6 @@
 
 using BarrowsWifi.Api.Data;
+using BarrowsWifi.Api.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace BarrowsWifi.Api.Endpoints;
@@ -19,6 +20,24 @@ public record OutletPagedResult<T>(
     int Page,
     int PageSize,
     int Total);
+
+public static class OutletSearch
+{
+    public static IQueryable<Outlet> Apply(
+        IQueryable<Outlet> outlets,
+        string? search)
+    {
+        var query = outlets.Where(o => o.IsActive);
+        if (string.IsNullOrWhiteSpace(search))
+            return query;
+
+        var term = search.Trim();
+        return query.Where(o =>
+            o.Name.Contains(term) ||
+            o.StpNumber.Contains(term) ||
+            o.Province.Contains(term));
+    }
+}
 
 public static class OutletEndpoints
 {
@@ -40,19 +59,7 @@ public static class OutletEndpoints
                 ? 25
                 : pageSize.Value;
 
-            var query = db.Outlets
-                .AsNoTracking()
-                .Where(o => o.IsActive);
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var term = search.Trim();
-
-                query = query.Where(o =>
-                    o.Name.Contains(term) ||
-                    o.StpNumber.Contains(term) ||
-                    o.Province.Contains(term));
-            }
+            var query = OutletSearch.Apply(db.Outlets.AsNoTracking(), search);
 
             var total = await query.CountAsync(ct);
 

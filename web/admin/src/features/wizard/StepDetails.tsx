@@ -20,8 +20,9 @@ export function StepDetails({ draft, errors, onChange, onNext }: Props) {
           onChange={e => onChange({ name: e.target.value })}
           placeholder="e.g. Festive Teaser"
           aria-invalid={!!errors.name}
+          aria-describedby={errors.name ? 'name-error' : undefined}
         />
-        {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
+        {errors.name && <p id="name-error" className="mt-1 text-sm text-red-600">{errors.name}</p>}
       </div>
 
       <div>
@@ -37,7 +38,7 @@ export function StepDetails({ draft, errors, onChange, onNext }: Props) {
       </div>
 
       <div className="flex justify-end">
-        <Button onClick={onNext}>Next</Button>
+        <Button type="button" onClick={onNext}>Next</Button>
       </div>
     </div>
   )
