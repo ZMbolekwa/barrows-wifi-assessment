@@ -54,15 +54,23 @@ The numerical reconciliation above uses the checked-in generated SQL seed data, 
 
 Ticket 3 – KES-212: Reliable campaign summary emails
 
-Status: Implementation work completed; end-to-end verification outstanding.
+Status: Implemented and end-to-end verified locally with forced mail acknowledgement failures and duplicate campaign-ended delivery.
 
 Work addressed:
 
 * Updated CampaignEndedConsumer to generate campaign summaries.
 * Added recipient handling for client administrators.
 * Introduced idempotency keys for email processing.
+* Handled concurrent insert collisions against the unique email idempotency key without sending duplicates.
 * Updated the fake mailer to simulate an acknowledgement timeout.
 * Added database uniqueness protection for campaign summaries and email idempotency keys.
+* Verified campaign 3 with local SQL Server: a forced mail acknowledgement timeout and a repeated CampaignEnded delivery produced one CampaignSummaries row and one SentEmails row for `ops@ubuntubank.test`; the saved values were 3,559 impressions, 2,967 unique users and 1,098 survey completes.
+
+Guarantees and limitations:
+
+* The unique campaign-summary and email-idempotency indexes prevent duplicate local records. The fake mailer stores the email before simulating an acknowledgement timeout, so retries with the same key do not create or send another local email.
+* A production mail provider must honor the supplied idempotency key across retries to provide the same delivery guarantee. Without provider-side idempotency, a lost acknowledgement after actual delivery can still result in a duplicate email.
+* Delivery is attempted for each ClientAdmin; the in-memory MassTransit retry policy is finite, and does not guarantee eventual delivery through a prolonged outage.
 
 Important files:
 
@@ -140,7 +148,7 @@ Outstanding verification includes:
 * Running frontend tests.
 * Verifying report access across different client organisations through the running API and SQL Server.
 * Confirming the Ticket 2 breakdown against production event-store data.
-* Testing campaign summary email retries and duplicate prevention.
+* Confirming the production mail provider supports the email idempotency contract.
 * Testing campaign wizard behaviour and responsiveness.
 * Testing the captive portal on older devices and slower connections.
 * Validating distributor CSV reconciliation.

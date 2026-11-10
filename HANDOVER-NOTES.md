@@ -19,3 +19,14 @@
 - Remaining verification: these are generated local seed records, not production ClickHouse data. Confirm the breakdown against the production source before closing the agency's billing discrepancy.
 
 Tickets 1 and 2 have been addressed; Tickets 3–6 remain as described in `HANDOVER.md`.
+
+## Ticket 3 — KES-212 campaign summary emails
+
+- The campaign-ended consumer saves one report-backed `CampaignSummary` per campaign and sends the summary to each `ClientAdmin` in the campaign's organisation using a stable per-campaign/per-user key.
+- Hardened the fake mailer against concurrent sends: if another attempt wins the unique idempotency-key insert, the losing attempt checks the persisted key and treats the send as already completed.
+- End-to-end verification used the local SQL Server and API with the fake mailer's acknowledgement failure rate set to 100%. Campaign 3 ended, persisted a summary, experienced the expected post-send timeout, and retried. After resetting it to Live and triggering another CampaignEnded event, the database still contained exactly one summary and one email for `ops@ubuntubank.test`.
+- Verified stored campaign 3 values: 3,559 impressions, 2,967 unique users, and 1,098 survey completes. The email recipient matched the only ClientAdmin in Ubuntu Bank.
+- The database unique indexes protect local summary and email records. Exactly-once external delivery requires the production provider to honor the stable idempotency key; finite in-memory retries cannot guarantee eventual delivery during prolonged outages.
+- The API and SQL Server started for verification were stopped afterward. The local Compose database volume is retained.
+
+Tickets 1–3 have been addressed; Tickets 4–6 remain as described in `HANDOVER.md`.

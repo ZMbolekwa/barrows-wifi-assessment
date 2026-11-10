@@ -1,12 +1,17 @@
 
 using BarrowsWifi.Api.Data;
 using BarrowsWifi.Api.Domain;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace BarrowsWifi.Api.Infrastructure;
 
 public interface IReportMailer
 {
+    /// <summary>
+    /// Sends one email for the idempotency key. Implementations must make retries with the same
+    /// key safe, including when delivery succeeded but its acknowledgement was lost.
+    /// </summary>
     Task SendAsync(
         string to,
         string subject,
@@ -60,7 +65,21 @@ public class FakeReportMailer : IReportMailer
             SentAt = DateTimeOffset.UtcNow
         });
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+            when (ex.GetBaseException() is SqlException sql &&
+                  (sql.Number == 2601 || sql.Number == 2627))
+        {
+            if (await db.SentEmails.AnyAsync(
+                e => e.IdempotencyKey == idempotencyKey,
+                ct))
+                return;
+
+            throw;
+        }
 
         _log.LogInformation(
             "Email sent to {To}: {Subject}",
