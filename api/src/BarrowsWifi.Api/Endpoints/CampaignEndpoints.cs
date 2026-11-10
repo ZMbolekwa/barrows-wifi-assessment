@@ -1,114 +1,140 @@
-
+using System.Security.Claims;
 using BarrowsWifi.Api.Data;
 using BarrowsWifi.Api.Domain;
 using BarrowsWifi.Api.Infrastructure;
 using Microsoft.EntityFrameworkCore;
-using MassTransit;
 
-namespace BarrowsWifi.Api.Messaging;
+namespace BarrowsWifi.Api.Endpoints;
 
-public class CampaignEndedConsumer : IConsumer<CampaignEnded>
+public record CampaignListItem(
+    int Id,
+    string Name,
+    string Organisation,
+    string Status,
+    DateTimeOffset StartsAt,
+    DateTimeOffset EndsAt,
+    decimal BudgetZar,
+    int OutletCount);
+
+public record CampaignPagedResult<T>(
+    IReadOnlyList<T> Items,
+    int Page,
+    int PageSize,
+    int Total);
+
+public record CreateCampaignRequest(
+    string Name,
+    DateTimeOffset StartsAt,
+    DateTimeOffset EndsAt,
+    decimal BudgetZar,
+    IReadOnlyList<int> OutletIds,
+    string? Status = null,
+    int? OrganisationId = null);
+
+public static class CampaignEndpoints
 {
-    private readonly AppDbContext _db;
-    private readonly ReportService _reports;
-    private readonly IReportMailer _mailer;
-    private readonly ILogger<CampaignEndedConsumer> _log;
-
-    public CampaignEndedConsumer(
-        AppDbContext db,
-        ReportService reports,
-        IReportMailer mailer,
-        ILogger<CampaignEndedConsumer> log)
+    public static void MapCampaignEndpoints(this IEndpointRouteBuilder app)
     {
-        _db = db;
-        _reports = reports;
-        _mailer = mailer;
-        _log = log;
-    }
+        var group = app.MapGroup("/api/campaigns")
+            .WithTags("Campaigns")
+            .RequireAuthorization();
 
-    public async Task Consume(ConsumeContext<CampaignEnded> context)
-    {
-        var campaign = await _db.Campaigns
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                c => c.Id == context.Message.CampaignId,
-                context.CancellationToken);
-
-        if (campaign is null)
+        group.MapGet("/", async (
+            ClaimsPrincipal principal,
+            AppDbContext db,
+            int? page,
+            int? pageSize,
+            CancellationToken ct) =>
         {
-            _log.LogWarning(
-                "Campaign {CampaignId} was not found",
-                context.Message.CampaignId);
-            return;
-        }
+            var currentPage = page is null or < 1 ? 1 : page.Value;
+            var size = pageSize is null or < 1 or > 100 ? 25 : pageSize.Value;
+            var query = db.Campaigns
+                .AsNoTracking()
+                .VisibleTo(CurrentUser.From(principal));
 
-        var clientUser = new CurrentUser(
-            0,
-            "system",
-            Roles.ClientAdmin,
-            campaign.OrganisationId);
+            var total = await query.CountAsync(ct);
+            var items = await query
+                .OrderByDescending(c => c.CreatedAt)
+                .Skip((currentPage - 1) * size)
+                .Take(size)
+                .Select(c => new CampaignListItem(
+                    c.Id,
+                    c.Name,
+                    c.Organisation!.Name,
+                    c.Status,
+                    c.StartsAt,
+                    c.EndsAt,
+                    c.BudgetZar,
+                    c.Outlets.Count))
+                .ToListAsync(ct);
 
-        var report = await _reports.BuildAsync(
-            campaign.Id,
-            clientUser,
-            context.CancellationToken);
+            return Results.Ok(new CampaignPagedResult<CampaignListItem>(
+                items,
+                currentPage,
+                size,
+                total));
+        });
 
-        if (report is null)
-            return;
-
-        var summary = await _db.CampaignSummaries
-            .FirstOrDefaultAsync(
-                s => s.CampaignId == campaign.Id,
-                context.CancellationToken);
-
-        if (summary is null)
+        group.MapPost("/", async (
+            CreateCampaignRequest request,
+            HttpRequest httpRequest,
+            ClaimsPrincipal principal,
+            AppDbContext db,
+            CancellationToken ct) =>
         {
-            summary = new CampaignSummary
+            var user = CurrentUser.From(principal);
+            var requestKey = httpRequest.Headers["Idempotency-Key"].FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(requestKey))
             {
-                CampaignId = campaign.Id,
-                GeneratedAt = DateTimeOffset.UtcNow,
-                Impressions = report.Impressions,
-                UniqueUsers = report.UniqueUsers,
-                SurveyCompletes = report.SurveyCompletes
+                var existing = await db.Campaigns
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.CreateRequestKey == requestKey, ct);
+                if (existing is not null)
+                    return Results.Ok(new { id = existing.Id });
+            }
+
+            var name = request.Name?.Trim();
+            var organisationId = user.IsPlatformAdmin
+                ? request.OrganisationId ?? user.OrganisationId
+                : user.OrganisationId;
+            var outletIds = request.OutletIds?.Distinct().ToArray() ?? Array.Empty<int>();
+
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 200 ||
+                request.StartsAt >= request.EndsAt || request.BudgetZar <= 0 ||
+                outletIds.Length == 0 || requestKey?.Length > 100)
+                return Results.BadRequest();
+
+            var organisationExists = await db.Organisations
+                .AnyAsync(o => o.Id == organisationId, ct);
+            if (!organisationExists)
+                return Results.BadRequest();
+
+            var activeOutletCount = await db.Outlets
+                .CountAsync(o => outletIds.Contains(o.Id) && o.IsActive, ct);
+            if (activeOutletCount != outletIds.Length)
+                return Results.BadRequest();
+
+            var now = DateTimeOffset.UtcNow;
+            var campaign = new Campaign
+            {
+                OrganisationId = organisationId,
+                Name = name,
+                Status = CampaignStatus.Draft,
+                StartsAt = request.StartsAt,
+                EndsAt = request.EndsAt,
+                BudgetZar = request.BudgetZar,
+                CreateRequestKey = string.IsNullOrWhiteSpace(requestKey) ? null : requestKey,
+                CreatedAt = now,
+                UpdatedAt = now,
+                Outlets = outletIds.Select(id => new CampaignOutlet { OutletId = id }).ToList()
             };
 
-            _db.CampaignSummaries.Add(summary);
-            await _db.SaveChangesAsync(context.CancellationToken);
-        }
+            db.Campaigns.Add(campaign);
+            await db.SaveChangesAsync(ct);
 
-        var admins = await _db.Users
-            .AsNoTracking()
-            .Where(u =>
-                u.OrganisationId == campaign.OrganisationId &&
-                u.Role == Roles.ClientAdmin)
-            .Select(u => new { u.Id, u.Email })
-            .ToListAsync(context.CancellationToken);
-
-        var subject = $"Campaign summary: {report.CampaignName}";
-
-        var body =
-            $"Campaign: {report.CampaignName}\n" +
-            $"Organisation: {report.Organisation}\n" +
-            $"Impressions: {summary.Impressions}\n" +
-            $"Unique users: {summary.UniqueUsers}\n" +
-            $"Survey completes: {summary.SurveyCompletes}\n";
-
-        foreach (var admin in admins)
-        {
-            var idempotencyKey =
-                $"campaign-summary:{campaign.Id}:user:{admin.Id}";
-
-            await _mailer.SendAsync(
-                admin.Email,
-                subject,
-                body,
-                idempotencyKey,
-                context.CancellationToken);
-        }
-
-        _log.LogInformation(
-            "Campaign {CampaignId} summary sent to {RecipientCount} admins",
-            campaign.Id,
-            admins.Count);
+            return Results.Created($"/api/campaigns/{campaign.Id}", new { id = campaign.Id });
+        })
+        .RequireAuthorization("CanEditCampaigns");
     }
 }

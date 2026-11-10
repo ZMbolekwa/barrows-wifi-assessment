@@ -35,6 +35,10 @@ public class AppDbContext : DbContext
         {
             e.ToTable("Campaigns");
             e.Property(x => x.BudgetZar).HasPrecision(12, 2);
+            e.Property(x => x.CreateRequestKey).HasMaxLength(100);
+            e.HasIndex(x => x.CreateRequestKey)
+                .IsUnique()
+                .HasFilter("[CreateRequestKey] IS NOT NULL");
             e.HasMany(x => x.Outlets).WithOne().HasForeignKey(x => x.CampaignId);
         });
 
@@ -68,13 +72,6 @@ b.Entity<SentEmail>(e =>
         .IsUnique()
         .HasFilter("[IdempotencyKey] IS NOT NULL");
 });
-
-
-e.Property(x => x.CreateRequestKey).HasMaxLength(100);
-
-e.HasIndex(x => x.CreateRequestKey)
-    .IsUnique()
-    .HasFilter("[CreateRequestKey] IS NOT NULL");
 
 
     }

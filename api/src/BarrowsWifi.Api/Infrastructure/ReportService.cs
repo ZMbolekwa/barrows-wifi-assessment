@@ -21,7 +21,7 @@ public class ReportService
 
     public ReportService(AppDbContext db) => _db = db;
 
-    public async Task<CampaignReport?> BuildAsync(int campaignId, CancellationToken ct)
+    public async Task<CampaignReport?> BuildAsync(int campaignId, CurrentUser user, CancellationToken ct)
     {
     var campaign = await _db.Campaigns
         .VisibleTo(user)

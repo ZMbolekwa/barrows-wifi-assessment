@@ -62,6 +62,7 @@ public class Campaign
     public DateTimeOffset EndsAt { get; set; }
 
     public decimal BudgetZar { get; set; }
+    public string? CreateRequestKey { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public List<CampaignOutlet> Outlets { get; set; } = new();
@@ -119,4 +120,3 @@ public class SentEmail
 }
 
 
-public string? CreateRequestKey { get; set; }
