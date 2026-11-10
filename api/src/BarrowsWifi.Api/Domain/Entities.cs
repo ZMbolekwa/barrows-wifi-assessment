@@ -107,9 +107,11 @@ public class CampaignSummary
     public int SurveyCompletes { get; set; }
 }
 
+
 public class SentEmail
 {
     public int Id { get; set; }
+    public string? IdempotencyKey { get; set; }
     public string ToAddress { get; set; } = "";
     public string Subject { get; set; } = "";
     public string Body { get; set; } = "";
