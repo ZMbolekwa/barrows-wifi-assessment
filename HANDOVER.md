@@ -18,14 +18,16 @@ The assessment consists of six development tickets. Changes should be committed 
 
 Ticket 1 – Security: Cross-client report access
 
-Status: Implementation work completed; testing still needs verification.
+Status: Implementation and unit-test verification completed; live API/database verification remains outstanding.
 
 Work addressed:
 
 * Added user context to report access.
 * Applied organisation and user-level visibility restrictions.
-* Hardened JWT lifetime validation.
-* Added or updated report service and domain tests.
+* Enabled JWT lifetime validation and covered expired-token rejection.
+* Added tests for client organisation scoping and platform-admin visibility.
+* `dotnet test api/BarrowsWifi.sln`: 12 passed.
+* `dotnet build api/BarrowsWifi.sln`: succeeded with 0 warnings and 0 errors.
 
 Important files:
 
@@ -134,7 +136,7 @@ Outstanding verification includes:
 
 * Running backend tests.
 * Running frontend tests.
-* Verifying report access across different client organisations.
+* Verifying report access across different client organisations through the running API and SQL Server.
 * Comparing report totals against actual source data.
 * Testing campaign summary email retries and duplicate prevention.
 * Testing campaign wizard behaviour and responsiveness.
