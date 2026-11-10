@@ -117,3 +117,6 @@ public class SentEmail
     public string Body { get; set; } = "";
     public DateTimeOffset SentAt { get; set; }
 }
+
+
+public string? CreateRequestKey { get; set; }

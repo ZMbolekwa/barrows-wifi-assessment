@@ -69,5 +69,13 @@ b.Entity<SentEmail>(e =>
         .HasFilter("[IdempotencyKey] IS NOT NULL");
 });
 
+
+e.Property(x => x.CreateRequestKey).HasMaxLength(100);
+
+e.HasIndex(x => x.CreateRequestKey)
+    .IsUnique()
+    .HasFilter("[CreateRequestKey] IS NOT NULL");
+
+
     }
 }
