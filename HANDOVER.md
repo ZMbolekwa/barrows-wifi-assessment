@@ -37,18 +37,20 @@ Important files:
 
 Ticket 2 – Reporting accuracy
 
-Status: Implementation work completed; production discrepancy still requires verification.
+Status: Report logic and seed-data discrepancy verified; production event-store confirmation remains outstanding.
 
 Work addressed:
 
-* Reviewed campaign and outlet report filtering.
-* Applied campaign, outlet and campaign-date filtering.
-* Used distinct event IDs for impression and survey-completion counts.
-* Reviewed ingestion validation and duplicate-event handling.
+* Reproduced the old 4,703 ad-complete total from the campaign 1 seed data. It included 615 rows belonging to campaign 2 at shared outlets.
+* Found 442 additional repeated campaign 1 ad-complete rows across 350 duplicated EventIds.
+* Campaign 1's flight- and outlet-scoped distinct total is 3,646 ad-complete events, near the agency's approximately 3,600.
+* Report queries now share tested campaign/outlet/flight filtering and count distinct EventIds for both impressions and survey completes.
+* The ingestion path already checks retries and handles concurrent unique-key conflicts; migration `006_dedupe_connection_events.sql` removes historical duplicate EventIds and adds a unique index to prevent recurrence.
+* Added regression tests for campaign attribution, outlet and flight boundaries, and duplicate event IDs.
 
 Important consideration:
 
-The reported difference between approximately 4,700 impressions and 3,600 agency impressions still needs to be demonstrated against the actual underlying data. A code change or sample test alone does not prove the root cause.
+The numerical reconciliation above uses the checked-in generated SQL seed data, not production ClickHouse. Confirm the same breakdown against the production event store before treating the invoice discrepancy as resolved.
 
 Ticket 3 – KES-212: Reliable campaign summary emails
 
@@ -137,7 +139,7 @@ Outstanding verification includes:
 * Running backend tests.
 * Running frontend tests.
 * Verifying report access across different client organisations through the running API and SQL Server.
-* Comparing report totals against actual source data.
+* Confirming the Ticket 2 breakdown against production event-store data.
 * Testing campaign summary email retries and duplicate prevention.
 * Testing campaign wizard behaviour and responsiveness.
 * Testing the captive portal on older devices and slower connections.
