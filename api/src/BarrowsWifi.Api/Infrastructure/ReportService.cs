@@ -23,9 +23,10 @@ public class ReportService
 
     public async Task<CampaignReport?> BuildAsync(int campaignId, CancellationToken ct)
     {
-        var campaign = await _db.Campaigns
-            .Include(c => c.Organisation)
-            .FirstOrDefaultAsync(c => c.Id == campaignId, ct);
+    var campaign = await _db.Campaigns
+        .VisibleTo(user)
+        .Include(c => c.Organisation)
+        .FirstOrDefaultAsync(c => c.Id == campaignId, ct);
         if (campaign is null) return null;
 
         // Events at the campaign's outlets during the flight
